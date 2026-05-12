@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>🗺️ SC Live Dashboard</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<style>
+  :root {
+    --c-programmata: #e91e63;
+    --c-lavorazione: #a5d6a7;
+    --c-evasa: #2e7d32;
+    --c-fallita: #d32f2f;
+    --c-respinta: #fbc02d;
+    --c-sospesa: #9e9e9e;
+    --c-cancellata: #f5f5f5;
+  }
+  body { background: #0f1115; color: #e7e9ee; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  .badge-stato { display:inline-flex; align-items:center; gap:.25rem; padding:.1rem .45rem; border-radius:.35rem; font-size:.7rem; font-weight:600; }
+  .s-Programmata { background:var(--c-programmata); color:#fff; }
+  .s-Lavorazione { background:var(--c-lavorazione); color:#1b3a1f; }
+  .s-Evasa { background:var(--c-evasa); color:#fff; }
+  .s-Fallita { background:var(--c-fallita); color:#fff; }
+  .s-Respinta { background:var(--c-respinta); color:#3a2d00; }
+  .s-Sospesa  { background:var(--c-sospesa); color:#fff; }
+  .s-Cancellata { background:var(--c-cancellata); color:#666; }
+
+  .targa-grid { display:grid; gap:.75rem; }
+  .mode-comfort { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
+  .mode-compact { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+  .mode-dense   { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  .targa-card { background:#1a1d24; border:1px solid #262a34; border-left-width:6px; border-radius:.6rem; padding:.7rem .9rem; cursor:pointer; transition: transform .08s; }
+  .targa-card:hover { transform: translateY(-1px); border-color:#3b4150; }
+  .card-ok   { border-left-color: var(--c-evasa); }
+  .card-warn { border-left-color: var(--c-respinta); }
+  .card-bad  { border-left-color: var(--c-fallita); }
+  .card-neutral { border-left-color: #555; }
+
+  .progress { background:#262a34; border-radius:9999px; height:6px; overflow:hidden; }
+  .progress > span { display:block; height:100%; background: var(--c-evasa); }
+
+  .ws-dot { width:.7rem; height:.7rem; border-radius:50%; display:inline-block; }
+  .ws-ok { background:#22c55e; }
+  .ws-warn { background:#f59e0b; }
+  .ws-bad { background:#ef4444; }
+
+  .timeline { background:#1a1d24; border:1px solid #262a34; border-radius:.6rem; }
+  .timeline-item { padding:.45rem .65rem; border-bottom:1px solid #262a34; font-size:.78rem; display:flex; flex-direction:column; gap:.15rem; }
+  .timeline-item:last-child { border-bottom: none; }
+  .ev-time { color:#9aa3b2; font-size:.7rem; }
+  .ev-line { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; }
+  .arrow { color:#7c8597; }
+
+  .modal-backdrop { background: rgba(0,0,0,.6); }
+  .modal-panel { background:#15181f; border:1px solid #2a2f3a; border-radius:.6rem; }
+
+  .kpi-tile { border-radius:.7rem; padding:1rem 1.1rem; color:#fff; display:flex; flex-direction:column; gap:.2rem; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
+  .kpi-tile .v { font-size:1.9rem; font-weight:700; line-height:1; }
+  .kpi-tile .l { font-size:.75rem; opacity:.85; text-transform:uppercase; letter-spacing:.04em; }
+  .kpi-tile .p { font-size:.7rem; opacity:.85; }
+
+  .punct-tag { font-size:.65rem; padding:.05rem .3rem; border-radius:.25rem; }
+  .punct-in_fascia { background:#1b5e20; color:#c8e6c9; }
+  .punct-anticipata { background:#1565c0; color:#bbdefb; }
+  .punct-ritardo_lieve { background:#f9a825; color:#3a2d00; }
+  .punct-ritardo_grave { background:#b71c1c; color:#fff; }
+
+  /* Catene */
+  .catena-grid { display:grid; gap:.6rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
+  .catena-card { background:#1a1d24; border:1px solid #262a34; border-left-width:6px; border-radius:.5rem; padding:.55rem .75rem; }
+  .catena-card.cc-ok   { border-left-color: var(--c-evasa); }
+  .catena-card.cc-warn { border-left-color: var(--c-respinta); }
+  .catena-card.cc-bad  { border-left-color: var(--c-fallita); }
+  .catena-card.cc-active { border-left-color: var(--c-programmata); }
+  .catena-stat { display:inline-flex; min-width:1.6rem; justify-content:center; padding:.1rem .35rem; border-radius:.25rem; color:#fff; font-weight:600; }
+</style>
+</head>
+<body x-data="dashboard()" x-init="init()">
+
+<header class="px-4 py-3 border-b border-gray-700 flex items-center gap-4">
+  <h1 class="text-xl font-semibold flex-1">🗺️ SC Live Dashboard</h1>
+  <div class="text-sm tabular-nums" x-text="clock"></div>
+  <div class="flex items-center gap-2 text-xs">
+    <span class="ws-dot" :class="wsClass"></span>
+    <span x-text="wsLabel"></span>
+  </div>
+  <label class="flex items-center gap-1 text-xs cursor-pointer select-none">
+    <input type="checkbox" x-model="audioEnabled" />
+    🔊 audio
+  </label>
+  <div class="flex gap-1 text-xs">
+    <template x-for="m in ['comfort','compact','dense']">
+      <button class="px-2 py-1 rounded border border-gray-700"
+              :class="layoutMode === m ? 'bg-indigo-600 border-indigo-500' : ''"
+              @click="layoutMode = m; layoutManual = true"
+              x-text="m"></button>
+    </template>
+  </div>
+</header>
+
+<main class="p-4 grid grid-cols-12 gap-4">
+  <!-- LEFT: KPI + grid -->
+  <section class="col-span-12 xl:col-span-9 space-y-3">
+    <!-- KPI -->
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+      <div class="kpi-tile" style="background:var(--c-programmata)">
+        <span class="v" x-text="data.kpi?.programmata ?? 0"></span>
+        <span class="l">Programmate</span>
+        <span class="p" x-text="pct(data.kpi?.programmata, data.total_deliveries)"></span>
+      </div>
+      <div class="kpi-tile" style="background:var(--c-evasa)">
+        <span class="v" x-text="data.kpi?.evasa ?? 0"></span>
+        <span class="l">Evase</span>
+        <span class="p" x-text="pct(data.kpi?.evasa, data.total_deliveries)"></span>
+      </div>
+      <div class="kpi-tile" style="background:var(--c-fallita)">
+        <span class="v" x-text="data.kpi?.fallita ?? 0"></span>
+        <span class="l">Fallite</span>
+        <span class="p" x-text="pct(data.kpi?.fallita, data.total_deliveries)"></span>
+      </div>
+      <div class="kpi-tile" style="background:var(--c-respinta); color:#3a2d00">
+        <span class="v" x-text="data.kpi?.respinta ?? 0"></span>
+        <span class="l">Respinte</span>
+        <span class="p" x-text="pct(data.kpi?.respinta, data.total_deliveries)"></span>
+      </div>
+      <div class="kpi-tile" style="background:#1e88e5">
+        <span class="v" x-text="(data.kpi?.puntualita_pct ?? null) === null ? '—' : Math.round(data.kpi.puntualita_pct) + '%'"></span>
+        <span class="l">Puntualità</span>
+        <span class="p" x-text="data.kpi?.puntualita_tot ? `${data.kpi.puntualita_in}/${data.kpi.puntualita_tot} in fascia` : 'nessuna evasa con orario'"></span>
+      </div>
+    </div>
+
+    <div class="text-sm text-gray-300">
+      <span x-text="`${data.total_deliveries ?? 0} consegne`"></span>
+      <span class="text-gray-500" x-text="` (${data.total_colli ?? 0} colli)`"></span>
+    </div>
+
+    <!-- Sezione Catene -->
+    <div>
+      <h2 class="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
+        🏪 Catene attive oggi
+        <span class="text-xs text-gray-500" x-text="`(${(data.catene||[]).length})`"></span>
+      </h2>
+      <div class="catena-grid">
+        <template x-for="c in (data.catene || [])" :key="c.catena">
+          <div class="catena-card" :class="catenaClass(c)">
+            <div class="flex items-baseline justify-between gap-2">
+              <span class="font-semibold text-sm truncate" :title="c.catena" x-text="c.catena"></span>
+              <span class="text-xs text-gray-400 whitespace-nowrap" x-text="`${c.total} (${c.colli}c.)`"></span>
+            </div>
+            <div class="mt-2 flex gap-1 text-xs font-mono">
+              <span class="catena-stat" style="background:var(--c-programmata)" x-text="(c.by_stato || {}).Programmata || 0" title="Programmate"></span>
+              <span class="catena-stat" style="background:var(--c-lavorazione); color:#1b3a1c" x-text="(c.by_stato || {}).Lavorazione || 0" title="Lavorazione"></span>
+              <span class="catena-stat" style="background:var(--c-evasa)" x-text="(c.by_stato || {}).Evasa || 0" title="Evase"></span>
+              <span class="catena-stat" style="background:var(--c-fallita)" x-text="(c.by_stato || {}).Fallita || 0" title="Fallite"></span>
+              <span class="catena-stat" style="background:var(--c-respinta); color:#3a2d00" x-text="(c.by_stato || {}).Respinta || 0" title="Respinte"></span>
+              <template x-if="(c.by_stato || {}).Sospesa">
+                <span class="catena-stat" style="background:var(--c-sospesa)" x-text="(c.by_stato || {}).Sospesa" title="Sospese"></span>
+              </template>
+              <template x-if="(c.by_stato || {}).Cancellata">
+                <span class="catena-stat" style="background:var(--c-cancellata); color:#444" x-text="(c.by_stato || {}).Cancellata" title="Cancellate"></span>
+              </template>
+            </div>
+          </div>
+        </template>
+        <template x-if="!data.catene || data.catene.length === 0">
+          <div class="text-sm text-gray-500">Nessuna catena attiva.</div>
+        </template>
+      </div>
+    </div>
+
+    <!-- Grid targhe -->
+    <h2 class="text-sm font-semibold text-gray-300 mb-2 flex items-center gap-2">
+      🚚 Targhe in consegna
+      <span class="text-xs text-gray-500" x-text="`(${(data.targhe||[]).length})`"></span>
+    </h2>
+    <div class="targa-grid" :class="`mode-${effectiveLayoutMode()}`">
+      <template x-for="t in (data.targhe || [])" :key="t.targa">
+        <div class="targa-card" :class="cardClass(t)" @click="openTarga(t.targa)">
+          <div class="flex items-baseline justify-between gap-2">
+            <span class="font-mono font-bold text-lg tracking-wider" x-text="t.targa"></span>
+            <span class="text-xs text-gray-400" x-text="`${t.total} (${t.colli} c.)`"></span>
+          </div>
+          <div class="progress mt-1">
+            <span :style="`width:${progressPct(t)}%`"></span>
+          </div>
+          <div class="mt-1 flex flex-wrap gap-1">
+            <template x-for="s in ['Programmata','Lavorazione','Evasa','Fallita','Respinta','Sospesa','Cancellata']">
+              <template x-if="(t.by_stato || {})[s]">
+                <span class="badge-stato" :class="`s-${s}`">
+                  <span x-text="(t.by_stato || {})[s]"></span>
+                  <span class="opacity-80" x-text="abbr(s)"></span>
+                </span>
+              </template>
+            </template>
+          </div>
+        </div>
+      </template>
+      <template x-if="!data.targhe || data.targhe.length === 0">
+        <div class="text-sm text-gray-500 col-span-full">Nessuna consegna caricata.</div>
+      </template>
+    </div>
+  </section>
+
+  <!-- RIGHT: timeline -->
+  <aside class="col-span-12 xl:col-span-3 space-y-2">
+    <h2 class="text-sm font-semibold flex items-center gap-2">
+      📡 Timeline eventi
+      <span class="text-xs text-gray-500" x-text="`${events.length}/20`"></span>
+    </h2>
+    <div class="timeline">
+      <template x-for="ev in events" :key="ev.id || (ev.cid + ev.ts)">
+        <div class="timeline-item">
+          <span class="ev-time" x-text="fmtTime(ev.ts)"></span>
+          <div class="ev-line">
+            <span class="font-mono text-xs text-gray-300" x-text="ev.targa || '—'"></span>
+            <span class="text-xs text-gray-200 truncate" x-text="ev.cliente || ev.cid" :title="ev.cliente"></span>
+          </div>
+          <div class="ev-line">
+            <template x-if="ev.type === 'delivery.status_changed'">
+              <span class="flex items-center gap-1">
+                <span class="badge-stato" :class="`s-${ev.old_stato}`" x-text="ev.old_stato"></span>
+                <span class="arrow">→</span>
+                <span class="badge-stato" :class="`s-${ev.new_stato}`" x-text="ev.new_stato"></span>
+                <template x-if="ev.puntualita">
+                  <span class="punct-tag" :class="`punct-${ev.puntualita}`" x-text="puntLabel(ev.puntualita, ev.delta_minutes)"></span>
+                </template>
+              </span>
+            </template>
+            <template x-if="ev.type === 'delivery.added'">
+              <span class="text-xs text-gray-300">＋ nuova: <span class="badge-stato" :class="`s-${ev.new_stato}`" x-text="ev.new_stato"></span></span>
+            </template>
+            <template x-if="ev.type === 'delivery.removed'">
+              <span class="text-xs text-gray-300">− rimossa (era <span class="badge-stato" :class="`s-${ev.old_stato}`" x-text="ev.old_stato"></span>)</span>
+            </template>
+          </div>
+        </div>
+      </template>
+      <template x-if="events.length === 0">
+        <div class="p-3 text-xs text-gray-500">In attesa di eventi...</div>
+      </template>
+    </div>
+  </aside>
+</main>
+
+<!-- MODAL: targa drill-down -->
+<div x-show="modalTarga" class="fixed inset-0 modal-backdrop z-40 flex items-center justify-center p-4" x-cloak @click.self="modalTarga=null">
+  <div class="modal-panel max-w-4xl w-full max-h-[85vh] overflow-auto p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold font-mono" x-text="modalTarga"></h2>
+      <button class="text-gray-400 hover:text-white" @click="modalTarga=null">✕</button>
+    </div>
+    <table class="w-full text-sm">
+      <thead class="text-xs text-gray-400 uppercase">
+        <tr><th class="text-left p-2">CID</th><th class="text-left p-2">Cliente</th><th class="text-left p-2">Catena/PV</th><th class="text-left p-2">Stato</th><th class="text-left p-2">Fascia</th><th class="text-left p-2">Tipo</th></tr>
+      </thead>
+      <tbody>
+        <template x-for="d in modalDeliveries" :key="d.cid">
+          <tr class="border-t border-gray-800 hover:bg-gray-900 cursor-pointer" @click="openCid(d.cid)">
+            <td class="p-2 font-mono text-xs" x-text="d.cid"></td>
+            <td class="p-2" x-text="`${d.cognome} ${d.nome}`.trim() || '—'"></td>
+            <td class="p-2 text-xs" x-text="`${d.catena} / ${d.punto_vendita}`"></td>
+            <td class="p-2"><span class="badge-stato" :class="`s-${d.stato}`" x-text="d.stato"></span></td>
+            <td class="p-2 text-xs tabular-nums" x-text="d.ora_da && d.ora_a ? `${d.ora_da}–${d.ora_a}` : '—'"></td>
+            <td class="p-2 text-xs" x-text="d.tipo_prodotto"></td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- MODAL: cid drill-down -->
+<div x-show="modalCid" class="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" x-cloak @click.self="modalCid=null">
+  <div class="modal-panel max-w-3xl w-full max-h-[85vh] overflow-auto p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Consegna <span class="font-mono text-base" x-text="modalCid"></span></h2>
+      <button class="text-gray-400 hover:text-white" @click="modalCid=null">✕</button>
+    </div>
+    <template x-if="cidDetail">
+      <div class="grid grid-cols-2 gap-2 text-sm">
+        <div><span class="text-gray-400">Stato:</span> <span class="badge-stato" :class="`s-${cidDetail.delivery.stato}`" x-text="cidDetail.delivery.stato"></span></div>
+        <div><span class="text-gray-400">Furgone:</span> <span class="font-mono" x-text="cidDetail.delivery.furgone"></span></div>
+        <div><span class="text-gray-400">Cliente:</span> <span x-text="`${cidDetail.delivery.cognome} ${cidDetail.delivery.nome}`.trim()"></span></div>
+        <div><span class="text-gray-400">Catena/PV:</span> <span x-text="`${cidDetail.delivery.catena} / ${cidDetail.delivery.punto_vendita}`"></span></div>
+        <div><span class="text-gray-400">Riferimento:</span> <span class="font-mono text-xs" x-text="cidDetail.delivery.riferimento"></span></div>
+        <div><span class="text-gray-400">Rif. base:</span> <span class="font-mono text-xs" x-text="cidDetail.delivery.riferimento_base"></span></div>
+        <div><span class="text-gray-400">Indirizzo:</span> <span x-text="`${cidDetail.delivery.citta} (${cidDetail.delivery.provincia})`"></span></div>
+        <div><span class="text-gray-400">Fascia:</span> <span x-text="`${cidDetail.delivery.ora_da}–${cidDetail.delivery.ora_a}`"></span></div>
+        <div><span class="text-gray-400">Data Consegna:</span> <span x-text="cidDetail.delivery.data_consegna"></span></div>
+        <div><span class="text-gray-400">Data Reale:</span> <span x-text="cidDetail.delivery.data_cons_reale || '—'"></span></div>
+        <div><span class="text-gray-400">Colli:</span> <span x-text="cidDetail.delivery.colli"></span></div>
+        <div><span class="text-gray-400">Tipo:</span> <span x-text="`${cidDetail.delivery.tipo_prodotto} ${cidDetail.delivery.marca} ${cidDetail.delivery.modello}`"></span></div>
+        <div class="col-span-2"><span class="text-gray-400">Causale:</span> <span x-text="cidDetail.delivery.causale || '—'"></span></div>
+        <div class="col-span-2"><span class="text-gray-400">Note trasp.:</span> <span x-text="cidDetail.delivery.note_trasportatore || '—'"></span></div>
+        <template x-if="cidDetail.puntualita">
+          <div class="col-span-2">
+            <span class="text-gray-400">Puntualità:</span>
+            <span class="punct-tag" :class="`punct-${cidDetail.puntualita}`" x-text="puntLabel(cidDetail.puntualita, cidDetail.delta_minutes)"></span>
+          </div>
+        </template>
+        <template x-if="cidDetail.related?.length">
+          <div class="col-span-2 mt-3">
+            <h3 class="text-sm font-semibold mb-1">Colli correlati (stesso Riferimento_base):</h3>
+            <ul class="text-xs space-y-1">
+              <template x-for="r in cidDetail.related" :key="r.cid">
+                <li class="flex items-center gap-2">
+                  <span class="font-mono" x-text="r.cid"></span>
+                  <span class="badge-stato" :class="`s-${r.stato}`" x-text="r.stato"></span>
+                  <span class="text-gray-400" x-text="`${r.tipo_prodotto} ${r.marca} ${r.modello}`"></span>
+                </li>
+              </template>
+            </ul>
+          </div>
+        </template>
+      </div>
+    </template>
+  </div>
+</div>
+
+<script>
+function dashboard() {
+  return {
+    data: { kpi: {}, targhe: [], total_deliveries: 0, total_colli: 0 },
+    events: [],
+    clock: "",
+    wsState: "connecting", // connecting | open | lost
+    ws: null,
+    wsReconnectTimer: null,
+    wsLostTimer: null,
+    audioEnabled: true,
+    audioCtx: null,
+    lastPingTs: 0,
+    evasiBurst: [],
+    layoutMode: "comfort",
+    layoutManual: false,
+    modalTarga: null,
+    modalDeliveries: [],
+    modalCid: null,
+    cidDetail: null,
+
+    init() {
+      this.tickClock();
+      setInterval(() => this.tickClock(), 1000);
+      this.fetchToday();
+      this.fetchRecent();
+      this.connectWS();
+    },
+
+    tickClock() {
+      this.clock = new Date().toLocaleString("it-IT", { hour12: false });
+    },
+
+    get wsClass() { return this.wsState === "open" ? "ws-ok" : (this.wsState === "connecting" ? "ws-warn" : "ws-bad"); },
+    get wsLabel() { return this.wsState === "open" ? "live" : (this.wsState === "connecting" ? "connecting..." : "offline"); },
+
+    fetchToday() {
+      fetch("/api/today").then(r => r.json()).then(j => {
+        this.data = j;
+        this.autoLayout();
+      }).catch(() => {});
+    },
+
+    fetchRecent() {
+      fetch("/api/events/recent?limit=20").then(r => r.json()).then(j => {
+        this.events = (j.events || []).reverse(); // newest first
+      }).catch(() => {});
+    },
+
+    connectWS() {
+      const proto = location.protocol === "https:" ? "wss" : "ws";
+      const url = `${proto}://${location.host}/ws/events`;
+      this.wsState = "connecting";
+      try {
+        this.ws = new WebSocket(url);
+      } catch (e) {
+        this.scheduleReconnect();
+        return;
+      }
+      this.ws.onopen = () => {
+        this.wsState = "open";
+        if (this.wsLostTimer) { clearTimeout(this.wsLostTimer); this.wsLostTimer = null; }
+      };
+      this.ws.onclose = () => {
+        this.wsState = "lost";
+        this.scheduleReconnect();
+        if (!this.wsLostTimer) {
+          this.wsLostTimer = setTimeout(() => { this.playConnectionLost(); }, 5000);
+        }
+      };
+      this.ws.onerror = () => { /* close fires next */ };
+      this.ws.onmessage = (msg) => {
+        try {
+          const m = JSON.parse(msg.data);
+          if (m.kind === "event") {
+            this.onEvent(m.data);
+          } else if (m.kind === "snapshot_refreshed") {
+            this.fetchToday();
+          }
+        } catch (e) { /* ignore */ }
+      };
+    },
+
+    scheduleReconnect() {
+      if (this.wsReconnectTimer) return;
+      this.wsReconnectTimer = setTimeout(() => {
+        this.wsReconnectTimer = null;
+        this.connectWS();
+      }, 2000);
+    },
+
+    onEvent(ev) {
+      // prepend, cap a 20
+      this.events.unshift(ev);
+      if (this.events.length > 20) this.events.length = 20;
+      this.playForEvent(ev);
+    },
+
+    // ----- AUDIO -----
+    ensureCtx() {
+      if (!this.audioCtx) {
+        try { this.audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+        catch (e) { return null; }
+      }
+      if (this.audioCtx.state === "suspended") this.audioCtx.resume();
+      return this.audioCtx;
+    },
+
+    tone({freq=880, dur=150, type="sine", vol=0.3, delay=0}={}) {
+      if (!this.audioEnabled) return;
+      const ctx = this.ensureCtx(); if (!ctx) return;
+      const t0 = ctx.currentTime + delay/1000;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type; osc.frequency.value = freq;
+      g.gain.setValueAtTime(0, t0);
+      g.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+      g.gain.linearRampToValueAtTime(0, t0 + dur/1000);
+      osc.connect(g).connect(ctx.destination);
+      osc.start(t0); osc.stop(t0 + dur/1000 + 0.02);
+    },
+
+    playPing()   { this.tone({freq:880, dur:150, type:"sine",   vol:0.3}); },
+    playBuzz()   { this.tone({freq:220, dur:300, type:"square", vol:0.4}); },
+    playRefuse() { this.tone({freq:660, dur:80,  type:"sine",   vol:0.35}); this.tone({freq:660, dur:80, type:"sine", vol:0.35, delay:180}); },
+    playLate()   { this.playPing(); this.tone({freq:440, dur:120, type:"square", vol:0.35, delay:160}); },
+    playConnectionLost() {
+      if (this.wsState === "open") return;
+      this.tone({freq:520, dur:160, type:"square", vol:0.35});
+      this.tone({freq:520, dur:160, type:"square", vol:0.35, delay:260});
+      this.tone({freq:520, dur:160, type:"square", vol:0.35, delay:520});
+    },
+
+    playForEvent(ev) {
+      if (!this.audioEnabled) return;
+      if (ev.type !== "delivery.status_changed") return;
+      const ns = ev.new_stato;
+      const now = Date.now();
+      if (ns === "Evasa") {
+        // burst aggregation
+        this.evasiBurst.push(now);
+        this.evasiBurst = this.evasiBurst.filter(t => now - t < 10000);
+        if (this.evasiBurst.length > 5) {
+          if (now - this.lastPingTs > 3000) { this.playPing(); this.lastPingTs = now; this.evasiBurst = []; }
+          return;
+        }
+        // ritardo grave → late combo
+        if (ev.puntualita === "ritardo_grave") {
+          if (now - this.lastPingTs > 3000) { this.playLate(); this.lastPingTs = now; }
+          return;
+        }
+        if (now - this.lastPingTs > 3000) { this.playPing(); this.lastPingTs = now; }
+      } else if (ns === "Fallita") {
+        this.playBuzz();
+      } else if (ns === "Respinta") {
+        this.playRefuse();
+      }
+    },
+
+    // ----- HELPERS -----
+    pct(num, den) {
+      if (!den) return "";
+      return Math.round((num || 0) / den * 100) + "%";
+    },
+    progressPct(t) {
+      if (!t.total) return 0;
+      const e = (t.by_stato && t.by_stato.Evasa) || 0;
+      return Math.round(e / t.total * 100);
+    },
+    abbr(s) { return ({Programmata:"P", Lavorazione:"L", Evasa:"E", Fallita:"F", Respinta:"R", Sospesa:"S", Cancellata:"C"})[s] || s[0]; },
+    cardClass(t) {
+      const s = t.by_stato || {};
+      if (s.Fallita) return "card-bad";
+      if (s.Respinta) return "card-warn";
+      if (s.Programmata || s.Lavorazione) return "card-neutral";
+      return "card-ok";
+    },
+    catenaClass(c) {
+      const s = c.by_stato || {};
+      if (s.Fallita) return "cc-bad";
+      if (s.Respinta) return "cc-warn";
+      if (s.Programmata || s.Lavorazione) return "cc-active";
+      return "cc-ok";
+    },
+    effectiveLayoutMode() {
+      if (this.layoutManual) return this.layoutMode;
+      const n = (this.data.targhe || []).length;
+      if (n <= 12) return "comfort";
+      if (n <= 20) return "compact";
+      return "dense";
+    },
+    autoLayout() {
+      if (!this.layoutManual) this.layoutMode = this.effectiveLayoutMode();
+    },
+    puntLabel(flag, delta) {
+      const m = delta == null ? "" : ` ${delta>=0?'+':''}${delta}m`;
+      return ({in_fascia:"in fascia", anticipata:"anticipata", ritardo_lieve:"ritardo lieve", ritardo_grave:"ritardo grave"})[flag] + m;
+    },
+    fmtTime(iso) {
+      try { return new Date(iso).toLocaleTimeString("it-IT", {hour12:false}); }
+      catch(e) { return iso; }
+    },
+
+    openTarga(targa) {
+      this.modalTarga = targa;
+      // pull list of deliveries for this targa
+      const t = (this.data.targhe || []).find(x => x.targa === targa);
+      if (!t) { this.modalDeliveries = []; return; }
+      Promise.all((t.cids || []).map(cid =>
+        fetch(`/api/delivery/${cid}`).then(r => r.json()).then(j => j.delivery)
+      )).then(list => { this.modalDeliveries = list.filter(Boolean); });
+    },
+
+    openCid(cid) {
+      this.modalCid = cid;
+      this.cidDetail = null;
+      fetch(`/api/delivery/${cid}`).then(r => r.json()).then(j => { this.cidDetail = j; });
+    },
+  };
+}
+</script>
+</body>
+</html>
