@@ -85,6 +85,9 @@ async def poller_loop() -> None:
                 # And a snapshot-refresh ping (lets clients refetch /api/today)
                 if events:
                     await state.ws.broadcast({"kind": "snapshot_refreshed", "ts": datetime.now().isoformat()})
+
+                # ---- Archiviazione storico ----
+                await _archive_snapshot(deliveries)
         except Exception as exc:  # pragma: no cover
             log.exception("Poller error: %s", exc)
         await asyncio.sleep(POLL_INTERVAL)
@@ -457,3 +460,137 @@ def index() -> FileResponse:
 
 
 app.mount("/static", StaticFiles(directory=FRONTEND_DIR), name="static")
+
+
+# ---------- Storico -----
+HISTORY_DIR = Path(os.getenv("DATA_PATH", "./data/csv")).parent / "history"
+
+
+async def _archive_snapshot(deliveries: list[Delivery]) -> None:
+    """Salva lo snapshot su disco per lo storico: primo + ultimo del giorno."""
+    if not deliveries:
+        return
+    # determina la data di oggi (Europe/Rome)
+    today = datetime.now().strftime("%Y-%m-%d")
+    now_ts = datetime.now().strftime("%H%M%S")
+    HISTORY_DIR.mkdir(parents=True, exist_ok=True)
+
+    # ---- CSV ----
+    csv_lines = ["CID,Riferimento,Riferimento_base,Catena,Punto Vendita,Stato,Furgone,"
+                "Data Consegna,Ora Da,Ora A,Data Cons. Reale,Citta,Provincia,"
+                "Tipo Prodotto,Marca,Modello,Colli,Causale,Note Trasportatore"]
+    for d in deliveries:
+        csv_lines.append(
+            f"{d.cid},{d.riferimento},{d.riferimento_base},{d.catena},{d.punto_vendita},"
+            f"{d.stato},{d.furgone},{d.data_consegna},{d.ora_da},{d.ora_a},{d.data_cons_reale},"
+            f"{d.citta},{d.provincia},{d.tipo_prodotto},{d.marca},{d.modello},"
+            f"{d.colli},{d.causale},{d.note_trasportatore}"
+        )
+    csv_content = "\n".join(csv_lines)
+
+    # ---- Primo del giorno ----
+    first_path = HISTORY_DIR / f"{today}_FIRST.csv"
+    if not first_path.exists():
+        first_path.write_text(csv_content, encoding="utf-8")
+        log.info("Archivio primo del giorno: %s", first_path.name)
+
+    # ---- Ultimo del giorno (sovrascrive) ----
+    last_path = HISTORY_DIR / f"{today}.csv"
+    last_path.write_text(csv_content, encoding="utf-8")
+
+
+# ---------- Storico: API ---------
+
+
+@app.get("/api/days")
+def api_days() -> dict[str, Any]:
+    """Lista giorni disponibili nello storico."""
+    if not HISTORY_DIR.exists():
+        return {"days": []}
+    # cerca tutti i file *_FIRST.csv (uno per giorno)
+    files = sorted(HISTORY_DIR.glob("*_FIRST.csv"), reverse=True)
+    days = [f.stem[:10] for f in files]  # YYYY-MM-DD
+    return {"days": days}
+
+
+@app.get("/api/day/{date}")
+def api_day(date: str) -> dict[str, Any]:
+    """Carica snapshot di un giorno specifico. date = YYYY-MM-DD."""
+    # validazione formato
+    if len(date) != 10 or date[4] != "-" or date[7] != "-":
+        raise HTTPException(status_code=400, detail="Formato: YYYY-MM-DD")
+
+    first_path = HISTORY_DIR / f"{date}_FIRST.csv"
+    last_path = HISTORY_DIR / f"{date}.csv"
+
+    if not first_path.exists() and not last_path.exists():
+        raise HTTPException(status_code=404, detail=f"Nessuno storico per {date}")
+
+    # usa l'ultimo disponibile (o il primo se l'ultimo non c'è)
+    src_path = last_path if last_path.exists() else first_path
+    if not src_path.exists():
+        raise HTTPException(status_code=404, detail=f"File non trovato per {date}")
+
+    csv_text = src_path.read_text(encoding="utf-8")
+    lines = csv_text.split("\n")
+    if len(lines) < 2:
+        return {"date": date, "consegne": []}
+
+
+    header = lines[0].split(",")
+    deliveries = []
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        vals = line.split(",")
+        if len(vals) < len(header):
+            continue
+        row = dict(zip(header, vals))
+        # converte campi numerici
+        try:
+            row["colli"] = int(row.get("colli", 0) or 0)
+            row["cid"] = str(row.get("cid", ""))
+        except (ValueError, TypeError):
+            pass
+        deliveries.append(row)
+
+    # ricalcola KPI
+    kpi = {"programmata": 0, "lavorazione": 0, "evasa": 0, "fallita": 0, "respinta": 0, "sospesa": 0, "cancellata": 0}
+    for d in deliveries:
+        s = d.get("stato", "")
+        if s in kpi:
+            kpi[s] += 1
+
+    # aggrega per catena
+    by_catena: dict[str, dict] = {}
+    for d in deliveries:
+        cat = d.get("catena", "—") or "—"
+        b = by_catena.setdefault(cat, {"catena": cat, "total": 0, "colli": 0, "by_stato": {}})
+        b["total"] += 1
+        b["colli"] += d.get("colli", 0)
+        s = d.get("stato", "")
+        b["by_stato"][s] = b["by_stato"].get(s, 0) + 1
+    catene = sorted(by_catena.values(), key=lambda x: -x["total"])
+
+
+    # aggrega per targa
+    by_targa: dict[str, dict] = {}
+    for d in deliveries:
+        t = d.get("Furgone", d.get("furgone", "—")) or "—"
+        b = by_targa.setdefault(t, {"targa": t, "total": 0, "colli": 0, "by_stato": {}})
+        b["total"] += 1
+        b["colli"] += d.get("colli", 0)
+        s = d.get("stato", "")
+        b["by_stato"][s] = b["by_stato"].get(s, 0) + 1
+    targhe = sorted(by_targa.values(), key=lambda x: -x["total"])
+
+    return {
+        "date": date,
+        "source": src_path.name,
+        "consegne_fisiche": len(deliveries),
+        "totale_colli": sum(d.get("colli", 0) for d in deliveries),
+        "kpi": kpi,
+        "catene": catene,
+        "targhe": targhe[:30],  # prime 30 targhe
+    }
+    log.debug("Archivio ultimo del giorno: %s", last_path.name)

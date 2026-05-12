@@ -212,6 +212,15 @@
   <button class="btn-tool text-sm" @click="toggleTheme()" :title="theme === 'dark' ? 'Passa a tema chiaro' : 'Passa a tema scuro'">
     <span x-text="theme === 'dark' ? '☀️' : '🌙'"></span>
   </button>
+  <select class="btn-tool text-xs py-1" @change="loadDay($el.value)" :value="selectedDay">
+    <option value="today">📅 Oggi</option>
+    <template x-for="day in availableDays" :key="day">
+      <option :value="day" x-text="day"></option>
+    </template>
+  </select>
+  <template x-if="isHistorical">
+    <span class="px-2 py-0.5 rounded text-xs" style="background:var(--c-respinta); color:#3a2d00">📂 Storico</span>
+  </template>
 </header>
 
 <main class="p-4 grid grid-cols-12 gap-4">
@@ -516,6 +525,9 @@ function dashboard() {
     evasiBurst: [],
     layoutMode: "comfort",
     layoutManual: false,
+    selectedDay: "today",  // "today" o YYYY-MM-DD
+    availableDays: [],
+    isHistorical: false,  // true se view storico
     modalTarga: null,
     modalDeliveries: [],
     modalCid: null,
@@ -530,6 +542,7 @@ function dashboard() {
       setInterval(() => this.tickClock(), 1000);
       this.fetchToday();
       this.fetchRecent();
+      this.fetchAvailableDays();
       this.connectWS();
     },
 
@@ -537,6 +550,33 @@ function dashboard() {
       this.theme = (this.theme === 'dark') ? 'light' : 'dark';
       document.documentElement.setAttribute('data-theme', this.theme);
       try { localStorage.setItem('sc-theme', this.theme); } catch (e) {}
+    },
+
+    // ---- Storico ----
+    fetchAvailableDays() {
+      fetch('/api/days').then(r => r.json()).then(j => {
+        this.availableDays = j.days || [];
+      }).catch(() => {});
+    },
+
+    loadDay(day) {
+      if (day === 'today') {
+        this.selectedDay = 'today';
+        this.isHistorical = false;
+        this.fetchToday();
+        return;
+      }
+      this.selectedDay = day;
+      this.isHistorical = true;
+      fetch('/api/day/' + day).then(r => r.json()).then(j => {
+        this.data = {
+          kpi: j.kpi,
+          catene: j.catene,
+          targhe: j.targhe,
+          total_deliveries: j.consegne_fisiche,
+          total_colli: j.totale_colli,
+        };
+      }).catch(() => {});
     },
 
     tickClock() {
