@@ -263,7 +263,7 @@
               <span class="font-semibold text-sm truncate" :title="c.catena" x-text="c.catena"></span>
               <span class="text-xs text-gray-400 whitespace-nowrap" x-text="`${c.total} (${c.colli}c.)`"></span>
             </div>
-            <div class="mt-2 flex gap-1 text-xs font-mono">
+            <div class="mt-2 flex flex-wrap gap-1 text-xs font-mono">
               <span class="catena-stat" style="background:var(--c-programmata)" x-text="(c.by_stato || {}).Programmata || 0" title="Programmate"></span>
               <span class="catena-stat" style="background:var(--c-lavorazione); color:#1b3a1c" x-text="(c.by_stato || {}).Lavorazione || 0" title="Lavorazione"></span>
               <span class="catena-stat" style="background:var(--c-evasa)" x-text="(c.by_stato || {}).Evasa || 0" title="Evase"></span>
@@ -274,6 +274,21 @@
               </template>
               <template x-if="(c.by_stato || {}).Cancellata">
                 <span class="catena-stat" style="background:var(--c-cancellata); color:#444" x-text="(c.by_stato || {}).Cancellata" title="Cancellate"></span>
+              </template>
+            </div>
+            <!-- Puntualità per catena -->
+            <div class="mt-2 pt-2 border-t" style="border-color: var(--border)">
+              <template x-if="c.puntualita_pct != null">
+                <div class="flex items-center gap-2 text-xs">
+                  <span class="text-gray-400">Puntualità:</span>
+                  <span class="font-mono font-bold"
+                        :style="`color: ${c.puntualita_pct >= 90 ? 'var(--c-evasa)' : (c.puntualita_pct >= 70 ? 'var(--c-respinta)' : 'var(--c-fallita)')}`"
+                        x-text="`${c.puntualita_pct}%`"></span>
+                  <span class="text-gray-500 text-xs" x-text="`(${(c.by_puntualita || {}).in_orario || 0}/${(c.by_puntualita || {}).totale || 0})`"></span>
+                </div>
+              </template>
+              <template x-if="c.puntualita_pct == null">
+                <div class="text-xs text-gray-500">Puntualità: —</div>
               </template>
             </div>
           </div>
@@ -321,9 +336,9 @@
   <aside class="col-span-12 xl:col-span-3 space-y-2">
     <h2 class="text-sm font-semibold flex items-center gap-2">
       📡 Timeline eventi
-      <span class="text-xs text-gray-500" x-text="`${events.length}/20`"></span>
+      <span class="text-xs text-gray-500" x-text="`${events.length}/10`"></span>
     </h2>
-    <div class="timeline">
+    <div class="timeline" x-ref="timeline">
       <template x-for="ev in events" :key="ev.id || (ev.cid + ev.ts)">
         <div class="timeline-item">
           <span class="ev-time" x-text="fmtTime(ev.ts)"></span>
@@ -333,13 +348,10 @@
           </div>
           <div class="ev-line">
             <template x-if="ev.type === 'delivery.status_changed'">
-              <span class="flex items-center gap-1">
+              <span class="flex items-center gap-1 flex-wrap">
                 <span class="badge-stato" :class="`s-${ev.old_stato}`" x-text="ev.old_stato"></span>
                 <span class="arrow">→</span>
                 <span class="badge-stato" :class="`s-${ev.new_stato}`" x-text="ev.new_stato"></span>
-                <template x-if="ev.puntualita">
-                  <span class="punct-tag" :class="`punct-${ev.puntualita}`" x-text="puntLabel(ev.puntualita, ev.delta_minutes)"></span>
-                </template>
               </span>
             </template>
             <template x-if="ev.type === 'delivery.added'">
@@ -349,6 +361,15 @@
               <span class="text-xs text-gray-300">− rimossa (era <span class="badge-stato" :class="`s-${ev.old_stato}`" x-text="ev.old_stato"></span>)</span>
             </template>
           </div>
+          <!-- Dettaglio puntualità -->
+          <template x-if="ev.puntualita">
+            <div class="mt-1">
+              <span class="punct-tag" :class="`punct-${ev.puntualita}`" x-text="puntLabel(ev.puntualita, ev.delta_minutes)"></span>
+              <template x-if="ev.delta_minutes != null">
+                <span class="text-xs text-gray-400 ml-1" x-text="`(${ev.delta_minutes > 0 ? '+' : ''}${ev.delta_minutes} min)`"></span>
+              </template>
+            </div>
+          </template>
         </div>
       </template>
       <template x-if="events.length === 0">
@@ -485,8 +506,8 @@ function dashboard() {
     },
 
     fetchRecent() {
-      fetch("/api/events/recent?limit=20").then(r => r.json()).then(j => {
-        this.events = (j.events || []).reverse(); // newest first
+      fetch("/api/events/recent?limit=10").then(r => r.json()).then(j => {
+        this.events = (j.events || []).reverse(); // newest first, cap 10
       }).catch(() => {});
     },
 
@@ -533,10 +554,15 @@ function dashboard() {
     },
 
     onEvent(ev) {
-      // prepend, cap a 20
+      // prepend, cap a 10, auto-scroll
       this.events.unshift(ev);
-      if (this.events.length > 20) this.events.length = 20;
+      if (this.events.length > 10) this.events.length = 10;
       this.playForEvent(ev);
+      // auto-scroll al nuovo evento
+      this.$nextTick(() => {
+        const tl = this.$refs.timeline;
+        if (tl) tl.scrollTop = 0;
+      });
     },
 
     // ----- AUDIO -----

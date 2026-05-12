@@ -238,22 +238,42 @@ def _build_today_payload(deliveries: list[Delivery]) -> dict[str, Any]:
             "total": 0,
             "colli": 0,
             "by_stato": {},
+            "by_puntualita": {},
         })
         bucket["total"] += 1
         bucket["colli"] += c["n_colli"]
         bucket["by_stato"][c["stato"]] = bucket["by_stato"].get(c["stato"], 0) + 1
+        # Conteggio puntualità per catena
+        flag, _ = compute_puntualita(d)
+        if flag in ("in_fascia", "anticipata"):
+            bucket.setdefault("by_puntualita", {})["in_orario"] = bucket["by_puntualita"].get("in_orario", 0) + 1
+        elif flag == "ritardo_lieve":
+            bucket.setdefault("by_puntualita", {})["ritardo_lieve"] = bucket["by_puntualita"].get("ritardo_lieve", 0) + 1
+        elif flag == "ritardo_grave":
+            bucket.setdefault("by_puntualita", {})["ritardo_grave"] = bucket["by_puntualita"].get("ritardo_grave", 0) + 1
+        bucket.setdefault("by_puntualita", {})["totale"] = bucket["by_puntualita"].get("totale", 0) + 1
 
     catene = list(by_catena.values())
 
+    # Funzione di ranking per catene (worst-first)
     def _rank_catena(b: dict) -> tuple[int, int, int, str]:
         s = b["by_stato"]
-        # worst-first: fallite > respinte > volume
         return (
             -s.get("Fallita", 0),
             -s.get("Respinta", 0),
             -b["total"],
             b["catena"],
         )
+
+    catene.sort(key=_rank_catena)
+
+    # Calcolo percentuale puntualità per ogni catena
+    for c in catene:
+        punct = c.get("by_puntualita", {})
+        tot = punct.get("totale", 0)
+        in_orario = punct.get("in_orario", 0)
+        c["puntualita_pct"] = round(in_orario / tot * 100) if tot else None
+
     catene.sort(key=_rank_catena)
 
     # Aggregazione per targa (sulle consegne fisiche)
