@@ -6,7 +6,17 @@
 <title>🗺️ SC Live Dashboard</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+<script>
+  // Applica il tema PRIMA del render per evitare flash di tema sbagliato.
+  (function() {
+    var t = localStorage.getItem('sc-theme') || 'dark';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
+  /* ============================================================
+     Palette stati (invariata, fonte di verità SC) 
+     ============================================================ */
   :root {
     --c-programmata: #e91e63;
     --c-lavorazione: #a5d6a7;
@@ -16,7 +26,56 @@
     --c-sospesa: #9e9e9e;
     --c-cancellata: #f5f5f5;
   }
-  body { background: #0f1115; color: #e7e9ee; font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+
+  /* ============================================================
+     Tema DARK (default)
+     ============================================================ */
+  html[data-theme="dark"] {
+    --bg-page:      #0f1115;
+    --bg-card:      #1a1d24;
+    --bg-card-2:    #15181f;
+    --bg-modal:     #15181f;
+    --bg-progress:  #262a34;
+    --border:       #262a34;
+    --border-hover: #3b4150;
+    --text-main:    #e7e9ee;
+    --text-muted:   #9aa3b2;
+    --text-dim:     #7c8597;
+    --btn-bg:       transparent;
+    --btn-border:   #374151;
+    --btn-active-bg: #4f46e5;
+    --btn-active-border: #6366f1;
+    --logo-filter:  brightness(1.0);
+  }
+
+  /* ============================================================
+     Tema LIGHT
+     ============================================================ */
+  html[data-theme="light"] {
+    --bg-page:      #f4f6fa;
+    --bg-card:      #ffffff;
+    --bg-card-2:    #ffffff;
+    --bg-modal:     #ffffff;
+    --bg-progress:  #e2e6ee;
+    --border:       #d8dde5;
+    --border-hover: #a3aab8;
+    --text-main:    #1a2030;
+    --text-muted:   #5d6677;
+    --text-dim:     #8893a4;
+    --btn-bg:       #ffffff;
+    --btn-border:   #d0d6df;
+    --btn-active-bg: #1565c0;
+    --btn-active-border: #1976d2;
+    --logo-filter:  none;
+  }
+
+  body {
+    background: var(--bg-page);
+    color: var(--text-main);
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    transition: background 0.2s ease, color 0.2s ease;
+  }
+
   .badge-stato { display:inline-flex; align-items:center; gap:.25rem; padding:.1rem .45rem; border-radius:.35rem; font-size:.7rem; font-weight:600; }
   .s-Programmata { background:var(--c-programmata); color:#fff; }
   .s-Lavorazione { background:var(--c-lavorazione); color:#1b3a1f; }
@@ -24,37 +83,45 @@
   .s-Fallita { background:var(--c-fallita); color:#fff; }
   .s-Respinta { background:var(--c-respinta); color:#3a2d00; }
   .s-Sospesa  { background:var(--c-sospesa); color:#fff; }
-  .s-Cancellata { background:var(--c-cancellata); color:#666; }
+  .s-Cancellata { background:var(--c-cancellata); color:#666; border:1px solid #ddd; }
 
   .targa-grid { display:grid; gap:.75rem; }
   .mode-comfort { grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); }
   .mode-compact { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
   .mode-dense   { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 
-  .targa-card { background:#1a1d24; border:1px solid #262a34; border-left-width:6px; border-radius:.6rem; padding:.7rem .9rem; cursor:pointer; transition: transform .08s; }
-  .targa-card:hover { transform: translateY(-1px); border-color:#3b4150; }
+  .targa-card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-left-width: 6px;
+    border-radius: .6rem;
+    padding: .7rem .9rem;
+    cursor: pointer;
+    transition: transform .08s, border-color .15s;
+  }
+  .targa-card:hover { transform: translateY(-1px); border-color: var(--border-hover); }
   .card-ok   { border-left-color: var(--c-evasa); }
   .card-warn { border-left-color: var(--c-respinta); }
   .card-bad  { border-left-color: var(--c-fallita); }
-  .card-neutral { border-left-color: #555; }
+  .card-neutral { border-left-color: #888; }
 
-  .progress { background:#262a34; border-radius:9999px; height:6px; overflow:hidden; }
-  .progress > span { display:block; height:100%; background: var(--c-evasa); }
+  .progress { background: var(--bg-progress); border-radius: 9999px; height: 6px; overflow: hidden; }
+  .progress > span { display: block; height: 100%; background: var(--c-evasa); }
 
   .ws-dot { width:.7rem; height:.7rem; border-radius:50%; display:inline-block; }
   .ws-ok { background:#22c55e; }
   .ws-warn { background:#f59e0b; }
   .ws-bad { background:#ef4444; }
 
-  .timeline { background:#1a1d24; border:1px solid #262a34; border-radius:.6rem; }
-  .timeline-item { padding:.45rem .65rem; border-bottom:1px solid #262a34; font-size:.78rem; display:flex; flex-direction:column; gap:.15rem; }
+  .timeline { background: var(--bg-card); border: 1px solid var(--border); border-radius: .6rem; }
+  .timeline-item { padding:.45rem .65rem; border-bottom:1px solid var(--border); font-size:.78rem; display:flex; flex-direction:column; gap:.15rem; }
   .timeline-item:last-child { border-bottom: none; }
-  .ev-time { color:#9aa3b2; font-size:.7rem; }
+  .ev-time { color: var(--text-muted); font-size:.7rem; }
   .ev-line { display:flex; align-items:center; gap:.35rem; flex-wrap:wrap; }
-  .arrow { color:#7c8597; }
+  .arrow { color: var(--text-dim); }
 
   .modal-backdrop { background: rgba(0,0,0,.6); }
-  .modal-panel { background:#15181f; border:1px solid #2a2f3a; border-radius:.6rem; }
+  .modal-panel { background: var(--bg-modal); border:1px solid var(--border); border-radius:.6rem; color: var(--text-main); }
 
   .kpi-tile { border-radius:.7rem; padding:1rem 1.1rem; color:#fff; display:flex; flex-direction:column; gap:.2rem; box-shadow: 0 1px 0 rgba(255,255,255,.04) inset; }
   .kpi-tile .v { font-size:1.9rem; font-weight:700; line-height:1; }
@@ -69,18 +136,61 @@
 
   /* Catene */
   .catena-grid { display:grid; gap:.6rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .catena-card { background:#1a1d24; border:1px solid #262a34; border-left-width:6px; border-radius:.5rem; padding:.55rem .75rem; }
+  .catena-card { background: var(--bg-card); border: 1px solid var(--border); border-left-width: 6px; border-radius: .5rem; padding: .55rem .75rem; }
   .catena-card.cc-ok   { border-left-color: var(--c-evasa); }
   .catena-card.cc-warn { border-left-color: var(--c-respinta); }
   .catena-card.cc-bad  { border-left-color: var(--c-fallita); }
   .catena-card.cc-active { border-left-color: var(--c-programmata); }
   .catena-stat { display:inline-flex; min-width:1.6rem; justify-content:center; padding:.1rem .35rem; border-radius:.25rem; color:#fff; font-weight:600; }
+
+  /* Header */
+  .app-header {
+    background: var(--bg-card);
+    border-bottom: 1px solid var(--border);
+    color: var(--text-main);
+  }
+  .app-logo { height: 38px; width: auto; display: block; filter: var(--logo-filter); }
+
+  /* Bottoni layout/tema */
+  .btn-tool {
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    color: var(--text-main);
+    padding: .25rem .55rem;
+    border-radius: .35rem;
+    transition: background .15s, border-color .15s;
+    cursor: pointer;
+  }
+  .btn-tool:hover { border-color: var(--border-hover); }
+  .btn-tool.is-active {
+    background: var(--btn-active-bg);
+    border-color: var(--btn-active-border);
+    color: #fff;
+  }
+
+  /* Tabelle nei modal */
+  .modal-panel th { color: var(--text-muted); }
+  .modal-panel tr:hover { background: rgba(127,127,127,0.08); }
+  .modal-panel .border-t { border-top-color: var(--border) !important; }
+  .modal-panel .hover\:bg-gray-900:hover { background: rgba(127,127,127,0.08) !important; }
+
+  /* Override Tailwind text-gray-* per essere tema-aware */
+  .text-gray-200 { color: var(--text-main) !important; }
+  .text-gray-300 { color: var(--text-main) !important; opacity: 0.92; }
+  .text-gray-400 { color: var(--text-muted) !important; }
+  .text-gray-500 { color: var(--text-dim) !important; }
+  .hover\:text-white:hover { color: var(--text-main) !important; }
+  .border-gray-800 { border-color: var(--border) !important; }
 </style>
 </head>
 <body x-data="dashboard()" x-init="init()">
 
-<header class="px-4 py-3 border-b border-gray-700 flex items-center gap-4">
-  <h1 class="text-xl font-semibold flex-1">🗺️ SC Live Dashboard</h1>
+<header class="app-header px-4 py-2.5 flex items-center gap-4">
+  <img src="/static/assets/logo-sc.png" alt="Servizi Campania" class="app-logo" />
+  <div class="flex-1 flex items-baseline gap-3">
+    <h1 class="text-lg font-semibold tracking-tight">Live Dashboard</h1>
+    <span class="text-xs" :style="`color: var(--text-muted)`">monitoraggio consegne real-time</span>
+  </div>
   <div class="text-sm tabular-nums" x-text="clock"></div>
   <div class="flex items-center gap-2 text-xs">
     <span class="ws-dot" :class="wsClass"></span>
@@ -92,12 +202,15 @@
   </label>
   <div class="flex gap-1 text-xs">
     <template x-for="m in ['comfort','compact','dense']">
-      <button class="px-2 py-1 rounded border border-gray-700"
-              :class="layoutMode === m ? 'bg-indigo-600 border-indigo-500' : ''"
+      <button class="btn-tool"
+              :class="layoutMode === m ? 'is-active' : ''"
               @click="layoutMode = m; layoutManual = true"
               x-text="m"></button>
     </template>
   </div>
+  <button class="btn-tool text-sm" @click="toggleTheme()" :title="theme === 'dark' ? 'Passa a tema chiaro' : 'Passa a tema scuro'">
+    <span x-text="theme === 'dark' ? '☀️' : '🌙'"></span>
+  </button>
 </header>
 
 <main class="p-4 grid grid-cols-12 gap-4">
@@ -340,13 +453,21 @@ function dashboard() {
     modalDeliveries: [],
     modalCid: null,
     cidDetail: null,
+    theme: "dark",  // sincronizzato in init() con localStorage/html data-theme
 
     init() {
+      this.theme = document.documentElement.getAttribute('data-theme') || 'dark';
       this.tickClock();
       setInterval(() => this.tickClock(), 1000);
       this.fetchToday();
       this.fetchRecent();
       this.connectWS();
+    },
+
+    toggleTheme() {
+      this.theme = (this.theme === 'dark') ? 'light' : 'dark';
+      document.documentElement.setAttribute('data-theme', this.theme);
+      try { localStorage.setItem('sc-theme', this.theme); } catch (e) {}
     },
 
     tickClock() {
