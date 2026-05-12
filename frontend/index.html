@@ -212,14 +212,9 @@
   <button class="btn-tool text-sm" @click="toggleTheme()" :title="theme === 'dark' ? 'Passa a tema chiaro' : 'Passa a tema scuro'">
     <span x-text="theme === 'dark' ? '☀️' : '🌙'"></span>
   </button>
-  <select class="btn-tool text-xs py-1" @change="loadDay($el.value)" :value="selectedDay">
-    <option value="today">📅 Oggi</option>
-    <template x-for="day in availableDays" :key="day">
-      <option :value="day" x-text="day"></option>
-    </template>
-  </select>
+  <input type="date" class="btn-tool text-xs py-1" :value="selectedDay === 'today' ? '' : selectedDay" @change="loadDay($el.value || 'today')" />
   <template x-if="isHistorical">
-    <span class="px-2 py-0.5 rounded text-xs" style="background:var(--c-respinta); color:#3a2d00">📂 Storico</span>
+    <span class="px-2 py-0.5 rounded text-xs" style="background:var(--c-respinta); color:#3a2d00" title="Storico">📂 Storico</span>
   </template>
 </header>
 
@@ -560,7 +555,7 @@ function dashboard() {
     },
 
     loadDay(day) {
-      if (day === 'today') {
+      if (!day || day === 'today') {
         this.selectedDay = 'today';
         this.isHistorical = false;
         this.fetchToday();
@@ -568,7 +563,15 @@ function dashboard() {
       }
       this.selectedDay = day;
       this.isHistorical = true;
-      fetch('/api/day/' + day).then(r => r.json()).then(j => {
+      fetch('/api/day/' + day).then(r => {
+        if (!r.ok) {
+          this.selectedDay = 'today';
+          this.isHistorical = false;
+          this.fetchToday();
+          return;
+        }
+        return r.json();
+      }).then(j => {
         this.data = {
           kpi: j.kpi,
           catene: j.catene,
