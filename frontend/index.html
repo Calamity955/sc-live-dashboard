@@ -136,7 +136,8 @@
 
   /* Catene */
   .catena-grid { display:grid; gap:.6rem; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
-  .catena-card { background: var(--bg-card); border: 1px solid var(--border); border-left-width: 6px; border-radius: .5rem; padding: .55rem .75rem; }
+  .catena-card { background: var(--bg-card); border: 1px solid var(--border); border-left-width: 6px; border-radius: .5rem; padding: .55rem .75rem; cursor: pointer; transition: border-color .15s; }
+  .catena-card:hover { border-color: var(--border-hover); }
   .catena-card.cc-ok   { border-left-color: var(--c-evasa); }
   .catena-card.cc-warn { border-left-color: var(--c-respinta); }
   .catena-card.cc-bad  { border-left-color: var(--c-fallita); }
@@ -258,7 +259,7 @@
       </h2>
       <div class="catena-grid">
         <template x-for="c in (data.catene || [])" :key="c.catena">
-          <div class="catena-card" :class="catenaClass(c)">
+          <div class="catena-card" :class="catenaClass(c)" @click="openCatena(c.catena)">
             <div class="flex items-baseline justify-between gap-2">
               <span class="font-semibold text-sm truncate" :title="c.catena" x-text="c.catena"></span>
               <span class="text-xs text-gray-400 whitespace-nowrap" x-text="`${c.total} (${c.colli}c.)`"></span>
@@ -454,6 +455,51 @@
   </div>
 </div>
 
+<!-- MODAL: catena drill-down -->
+<div x-show="modalCatena" class="fixed inset-0 modal-backdrop z-50 flex items-center justify-center p-4" x-cloak @click.self="modalCatena=null">
+  <div class="modal-panel max-w-4xl w-full max-h-[85vh] overflow-auto p-4">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-lg font-semibold">Catena: <span x-text="modalCatena"></span></h2>
+      <button class="text-gray-400 hover:text-white" @click="modalCatena=null">✕</button>
+    </div>
+    <template x-if="modalCatenaDeliveries.length">
+      <div class="text-sm mb-3 flex gap-4">
+        <span><span class="text-gray-400">Totale:</span> <span x-text="modalCatenaDeliveries.length"></span></span>
+        <span><span class="text-gray-400">Colli:</span> <span x-text="modalCatenaDeliveries.reduce((a,d)=>a+(d.n_colli||0),0)"></span></span>
+      </div>
+      <div class="overflow-auto">
+        <table class="w-full text-xs">
+          <thead class="border-b text-gray-400">
+            <tr>
+              <th class="text-left py-1 px-2">CID</th>
+              <th class="text-left py-1 px-2">Riferimento</th>
+              <th class="text-left py-1 px-2">Stato</th>
+              <th class="text-left py-1 px-2">PV</th>
+              <th class="text-left py-1 px-2">Targa</th>
+              <th class="text-left py-1 px-2">Città</th>
+            </tr>
+          </thead>
+          <tbody>
+            <template x-for="d in modalCatenaDeliveries" :key="d.cid">
+              <tr class="border-b hover:bg-gray-800">
+                <td class="py-1 px-2 font-mono" x-text="d.cid"></td>
+                <td class="py-1 px-2 font-mono" x-text="d.riferimento_base || d.riferimento"></td>
+                <td class="py-1 px-2"><span class="badge-stato" :class="`s-${d.stato}`" x-text="d.stato"></span></td>
+                <td class="py-1 px-2" x-text="d.punto_vendita"></td>
+                <td class="py-1 px-2 font-mono" x-text="d.furgone"></td>
+                <td class="py-1 px-2" x-text="d.citta"></td>
+              </tr>
+            </template>
+          </tbody>
+        </table>
+      </div>
+    </template>
+    <template x-if="!modalCatenaDeliveries.length">
+      <div class="text-sm text-gray-400">Caricamento...</div>
+    </template>
+  </div>
+</div>
+
 <script>
 function dashboard() {
   return {
@@ -473,6 +519,8 @@ function dashboard() {
     modalTarga: null,
     modalDeliveries: [],
     modalCid: null,
+    modalCatena: null,
+    modalCatenaDeliveries: [],
     cidDetail: null,
     theme: "dark",  // sincronizzato in init() con localStorage/html data-theme
 
@@ -678,6 +726,13 @@ function dashboard() {
       Promise.all((t.cids || []).map(cid =>
         fetch(`/api/delivery/${cid}`).then(r => r.json()).then(j => j.delivery)
       )).then(list => { this.modalDeliveries = list.filter(Boolean); });
+    },
+
+    openCatena(catena) {
+      this.modalCatena = catena;
+      fetch(`/api/catena/${encodeURIComponent(catena)}`).then(r => r.json()).then(j => {
+        this.modalCatenaDeliveries = j.deliveries || [];
+      }).catch(() => { this.modalCatenaDeliveries = []; });
     },
 
     openCid(cid) {

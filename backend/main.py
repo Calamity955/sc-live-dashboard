@@ -381,6 +381,43 @@ def api_delivery(cid: str) -> dict[str, Any]:
     }
 
 
+@app.get("/api/catena/{catena}")
+def api_catena(catena: str) -> dict[str, Any]:
+    # decodifica URL
+    catena_decoded = catena.replace("_", "/").replace("_", " ")
+    all_deliveries = state.db.load_current()
+    # filtra per catena (match esatto o decoded)
+    matches = [d for d in all_deliveries if d.catena == catena or d.catena == catena_decoded]
+    if not matches:
+        raise HTTPException(status_code=404, detail=f"Catena {catena} non trovata")
+    # aggrega per stato
+    by_stato: dict[str, int] = {}
+    for d in matches:
+        by_stato[d.stato] = by_stato.get(d.stato, 0) + 1
+    # lista dettagli consegne
+    deliveries_detail = [
+        {
+            "cid": d.cid,
+            "riferimento": d.riferimento,
+            "riferimento_base": d.riferimento_base,
+            "stato": d.stato,
+            "n_colli": d.colli,
+            "punto_vendita": d.punto_vendita,
+            "furgone": d.furgone,
+            "citta": d.citta,
+            "provincia": d.provincia,
+        }
+        for d in matches
+    ]
+    return {
+        "catena": catena,
+        "total": len(matches),
+        "colli": sum(d.colli for d in matches),
+        "by_stato": by_stato,
+        "deliveries": deliveries_detail,
+    }
+
+
 @app.get("/api/status")
 def api_status() -> dict[str, Any]:
     return {
